@@ -259,3 +259,54 @@ pdf(paste(plot_output_path, "velocity_tsne_1keach_scEnergyColor.pdf", sep = "/")
 show.velocity.on.embedding.cor(tsne_loc,rvel_1keach,n=200,scale='sqrt',cell.colors=ac(scnergy_color_rampallette,alpha=0.8),cex=0.4,arrow.scale=7,show.grid.flow=TRUE,min.grid.cell.mass=0.5,grid.n=40,arrow.lwd=1,do.par=F,cell.border.alpha = 0.001, xlab = "Component 1", ylab = "Component 2")
 dev.off()
 
+## generate the splice vs unplice distribution
+
+emat_normal <- cbind(emat_ind1, emat_ind9, emat_ind10)%>%as.matrix()%>%as.data.frame()
+nmat_normal <- cbind(nmat_ind1, nmat_ind9, nmat_ind10)%>%as.matrix()%>%as.data.frame()
+emat_brca <- cbind(emat_ind2, emat_ind3, emat_ind4)%>%as.matrix()%>%as.data.frame()
+nmat_brca <- cbind(nmat_ind2, nmat_ind3, nmat_ind4)%>%as.matrix()%>%as.data.frame()
+
+for (i in c("emat_normal", "nmat_normal", "emat_brca", "nmat_brca")){
+  name <- paste(i, "_sum", sep = "")
+  val <- sum(get(i))
+  assign(name, val)
+}
+
+## sum gene expression for each cells 
+## normal vs brca
+for (i in c("emat_normal", "nmat_normal", "emat_brca", "nmat_brca")){
+  name <- paste(i, "_gene_expression_sum", sep = "")
+  val <- rowSums(get(i))
+  assign(name, val)
+}
+
+## select genes that have larger than 10 splice + unsplice count 
+## normal vs brca
+normal_gene_expression_df <- data.frame("gene_name" = rownames(emat_ind1),
+                                        "splice" = emat_normal_gene_expression_sum,
+                                        "unsplice" = nmat_normal_gene_expression_sum,
+                                        "group" = "normal") %>%
+  filter((splice+unsplice) >= 10) %>%
+  mutate(splice_ratio = splice/(splice+unsplice))
+
+brca_gene_expression_df <- data.frame("gene_name" = rownames(emat_ind1),
+                                      "splice" = emat_brca_gene_expression_sum,
+                                      "unsplice" = nmat_brca_gene_expression_sum,
+                                      "group" = "brca") %>%
+  filter((splice+unsplice) >= 10) %>%
+  mutate(splice_ratio = splice/(splice+unsplice))
+
+
+gene_expression_df <- rbind(normal_gene_expression_df, brca_gene_expression_df)
+
+## plot brca vs normal
+pdf(paste(plot_output_path, "splice_ratio.pdf", sep = "/"), width = 5, height = 4)
+gene_expression_df %>% ggplot(aes(x = splice_ratio, fill = group)) + geom_histogram( alpha=.5, position="identity") +
+  theme_bw() +
+  theme(axis.title = element_text(size=12),
+        axis.text  = element_text(size=14),
+        legend.title = element_text(size=14),
+        legend.text = element_text(size=12))
+dev.off()  
+
+
