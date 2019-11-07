@@ -1,8 +1,6 @@
 ## generate pdf plot for BRCA vs normal breast tissue, epi cells
-## DDRtree cell color by group, arrow by velocity
-## Ddrtree pesudotime 
-## Ddrtree + scenery 
-## Tsne + velocity , 1k from each individual 
+
+
 
 ## libraries
 library(monocle)
@@ -18,12 +16,14 @@ library(colorRamps)
 ## functions
 
 
+
 ## set up path
 input_path <- "/Users/yanwengong/Documents/kai_lab/rna_velocity_2019_summer/data/brca_nomal_epi"
 plot_output_path <- "/Users/yanwengong/Documents/kai_lab/rna_velocity_2019_summer/plot/brca_nomal_epi"
 ## read in files
 
 ## load RData
+setwd('/Users/yanwengong')
 load('normal_brca_6samples.RData')
 
 ## load seurat object
@@ -265,3 +265,54 @@ pdf(paste(plot_output_path, "velocity_tsne_1keach_scEnergyColor.pdf", sep = "/")
 show.velocity.on.embedding.cor(tsne_loc,rvel_1keach,n=200,scale='sqrt',cell.colors=ac(scnergy_color_rampallette,alpha=0.8),cex=0.4,arrow.scale=7,show.grid.flow=TRUE,min.grid.cell.mass=0.5,grid.n=40,arrow.lwd=1,do.par=F,cell.border.alpha = 0.001, xlab = "Component 1", ylab = "Component 2")
 dev.off()
 
+
+## splice vs total count ratio between BRCA and normal
+
+## get splice vs unsplice count 
+
+emat_normal <- cbind(emat_ind1, emat_ind9, emat_ind10)%>%as.matrix()%>%as.data.frame()
+nmat_normal <- cbind(nmat_ind1, nmat_ind9, nmat_ind10)%>%as.matrix()%>%as.data.frame()
+emat_brca <- cbind(emat_ind2, emat_ind3, emat_ind4)%>%as.matrix()%>%as.data.frame()
+nmat_brca <- cbind(nmat_ind2, nmat_ind3, nmat_ind4)%>%as.matrix()%>%as.data.frame()
+
+## sum gene expression for each cells 
+## normal vs brca
+for (i in c("emat_normal", "nmat_normal", "emat_brca", "nmat_brca")){
+  name <- paste(i, "_gene_expression_sum", sep = "")
+  val <- rowSums(get(i))
+  assign(name, val)
+}
+
+## select genes that have larger than 10 splice + unsplice count 
+## normal vs brca
+normal_gene_expression_df <- data.frame("gene_name" = rownames(emat_ind1),
+                                        "splice" = emat_normal_gene_expression_sum,
+                                        "unsplice" = nmat_normal_gene_expression_sum,
+                                        "group" = "normal") %>%
+  filter((splice+unsplice) >= 10) %>%
+  mutate(splice_ratio = splice/(splice+unsplice))
+
+brca_gene_expression_df <- data.frame("gene_name" = rownames(emat_ind1),
+                                      "splice" = emat_brca_gene_expression_sum,
+                                      "unsplice" = nmat_brca_gene_expression_sum,
+                                      "group" = "brca") %>%
+  filter((splice+unsplice) >= 10) %>%
+  mutate(splice_ratio = splice/(splice+unsplice))
+
+
+gene_expression_df <- rbind(normal_gene_expression_df, brca_gene_expression_df)
+gene_expression_merge_df <- normal_gene_expression_df %>% inner_join(brca_gene_expression_df, by = "gene_name")
+
+## HERE IS THE PLOT I NEED TO REGENERATE FOR QUY
+pdf(paste(plot_output_path, "splice_ratio_brca_vs_normal.pdf", sep = "/"), width = 5, height = 3)
+gene_expression_merge_df %>% ggplot(aes(x = splice_ratio.x, y = splice_ratio.y)) +
+  geom_point(alpha = 0.5) +
+  theme_bw() +
+  theme(axis.title = element_text(size=14),
+        axis.text  = element_text(size=12))+
+  xlab("normal: splice/total") +
+  ylab("BRCA: splice/total") 
+dev.off()
+
+## output the count data as csv 
+write.csv(gene_expression_merge_df, paste(input_path, "splice_over_totalCount_brca_vs_normal.csv", sep = "/"))
