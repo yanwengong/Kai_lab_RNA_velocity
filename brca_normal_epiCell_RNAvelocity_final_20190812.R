@@ -31,9 +31,9 @@ brca_normal_seurat_object<-readRDS(paste(input_path, "brca_normal_seurat_object"
 
 ## get the 1k cell for each 6 samples 
 set.seed(20190715)
-sample_cell_each1k <- brca_normal_seurat_object@meta.data %>%tibble::rownames_to_column("cell_barcode") %>% 
-  filter(assig.label != "UnClass") %>%
-  group_by(group) %>% sample_n(1000) %>% data.frame() %>% arrange(cell_barcode) %>% select(cell_barcode) 
+sample_cell_each1k <- brca_normal_seurat_object@meta.data %>% %>% 
+  dplyr::filter(assig.label != "UnClass") %>%
+  group_by(group) %>% sample_n(1000) %>% data.frame() %>% arrange(cell_barcode) %>% dplyr::select(cell_barcode) 
 
 ## Ddrtree pesudotime
 nature_comm_list <- read.delim(paste(input_path, "Nat_Comm_Droplet_Ordering_Genes.txt", sep = "/"), header = TRUE) #214
@@ -71,10 +71,37 @@ monocle_cds_each1k_ddrtree_nc <- orderCells(monocle_cds_each1k_ddrtree_nc)
 
 # colored by pseudotime
 plot_cell_trajectory(monocle_cds_each1k_ddrtree_nc, color_by = "State")
-monocle_cds_ddrtree <- orderCells(monocle_cds_each1k_ddrtree_nc, root_state = 3)
+monocle_cds_ddrtree <- orderCells(monocle_cds_each1k_ddrtree_nc, root_state = 1)
 pdf(paste(plot_output_path, "ddrtree_each1k_naturecom_pseudotime.pdf", sep = "/"), width = 5, height = 4)
 plot_cell_trajectory(monocle_cds_ddrtree, color_by = "Pseudotime", cell_size = 0.5)
 dev.off()
+
+# colored by brca vs noraml
+
+pdf(paste(plot_output_path, "ddrtree_each1k_naturecom_brac_ident.pdf", sep = "/"), width = 5, height = 4)
+plot_cell_trajectory(monocle_cds_ddrtree, color_by = "brca.ident", cell_size = 0.5)
+dev.off()
+
+## plot_genes_in_pseudotime
+
+
+blast_genes <- row.names(subset(fData(monocle_cds_ddrtree),
+                                gene_short_name %in% c("KRT23", "ALDH1A3")))
+plot_genes_jitter(monocle_cds_ddrtree[blast_genes,],
+                  grouping = "State",
+                  min_expr = 0.1)
+
+my_genes <- row.names(subset(fData(monocle_cds_ddrtree),
+                             gene_short_name %in% c("KRT23", "ALDH1A3")))
+cds_subset <- monocle_cds_ddrtree[my_genes,]
+pdf(paste(plot_output_path, "plot_genes_in_pseudotime_KRT12_ALDH1A3.pdf", sep = "/"), width = 7, height = 5)
+plot_genes_in_pseudotime(cds_subset, color_by = "assig.label")
+dev.off()
+
+## save monocle object
+saveRDS(monocle_cds_ddrtree, file=paste(input_path, "monocle_cds_ddrtree.Rds", sep = "/"))
+
+
 
 # save the ddrtree location
 ddrtree_loc_1kCell_eachSample<- monocle_cds_each1k_ddrtree_nc@reducedDimS %>% data.frame() %>% t() %>% data.frame() 
@@ -85,6 +112,43 @@ ddrtree_loc_1kCell_eachSample$Row <- gsub("_", ":", gsub("..$", "x", ddrtree_loc
 ddrtree_loc_1kCell_eachSample <- ddrtree_loc_1kCell_eachSample[, c(3,1,2)]
 #write.table(brca_normal_1keach_ddrtree_nat_com, file = "/Users/yanwengong/Documents/kai_lab/rna_velocity_2019_summer/data/loc_files/brca_normal_1keach_ddrtree_nat_com.txt", sep = "\t",
 #            row.names = TRUE, col.names = TRUE)
+
+## DDrtree + gene expression 
+selected_gene_names <- c("KRT23", "ALDH1A3")
+selected_gene_expression <- data %>% data.frame()%>%subset(rownames(data)%in%selected_gene_names)
+selected_gene_expression_df <- t(selected_gene_expression) %>% as.data.frame()
+selected_gene_expression_df <- selected_gene_expression_df %>% tibble::rownames_to_column("Row")
+selected_gene_expression_df$Row <- gsub("_", ":", gsub("..$", "x", selected_gene_expression_df$Row))
+selectedGene_ddrtree_loc <- selected_gene_expression_df%>% inner_join(ddrtree_loc_1kCell_eachSample, by = "Row")
+## plot RAW expression
+selectedGene_ddrtree_loc %>% ggplot(aes(x = ddrtree1, y = ddrtree2, color = ALDH1A3)) + 
+  geom_point(size = 0.5) + theme_bw() +  scale_color_gradientn(colours=colorRamps::matlab.like(8)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+
+
+selectedGene_ddrtree_loc %>% ggplot(aes(x = ddrtree1, y = ddrtree2, color = KRT23)) + 
+  geom_point(size = 0.5) + theme_bw() +  scale_color_gradientn(colours=colorRamps::matlab.like(8)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+
+## Plot expression normalized by log2(n+1)
+selectedGene_ddrtree_loc <- selectedGene_ddrtree_loc %>% mutate(ALDH1A3_log2 = log2(ALDH1A3+1))
+pdf(paste(plot_output_path, "ddrtree_ALDH1A3_log2.pdf", sep = "/"), width = 5, height = 4)
+selectedGene_ddrtree_loc %>% ggplot(aes(x = ddrtree1, y = ddrtree2, color = ALDH1A3_log2)) + 
+  geom_point(size = 0.5) + theme_bw() +  scale_color_gradientn(colours=colorRamps::matlab.like(8)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+dev.off()
+
+selectedGene_ddrtree_loc <- selectedGene_ddrtree_loc %>% mutate(KRT23_log2 = log2(KRT23+1))
+pdf(paste(plot_output_path, "ddrtree_KRT23_log2.pdf", sep = "/"), width = 5, height = 4)
+selectedGene_ddrtree_loc %>% ggplot(aes(x = ddrtree1, y = ddrtree2, color = KRT23_log2)) + 
+  geom_point(size = 0.5) + theme_bw() +  scale_color_gradientn(colours=colorRamps::matlab.like(8)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+dev.off()
+
 
 ## Ddrtree + scenery
 scenergy <- read.delim(paste(input_path, "scEnergy_NormalBrca_Quy.txt",  sep = "/"))
